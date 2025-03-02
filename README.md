@@ -117,11 +117,9 @@ wiz prompt "Fix bugs" | wiz apply -
 
 ---
 
-<p align="center">
-  <a href="https://github.com/ddrscott/wizard-prompt-cli">
-    <img src="https://img.shields.io/github/stars/ddrscott/wizard-prompt-cli.svg?style=social&label=Star&maxAge=2592000" alt="GitHub stars">
-  </a>
-</p>
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=wizard-prompt-cli/wizard-prompt-cli&type=Date)](https://star-history.com/#wizard-prompt-cli/wizard-prompt-cli&Date)
 
 <p align="center">
   <i>✨ If this magical tool helped you, consider giving it a star! ✨</i>
