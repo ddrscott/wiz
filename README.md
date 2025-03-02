@@ -3,7 +3,6 @@
 > *Summon the power of Claude AI to transform your code with a wave of your terminal wand!*
 
 [![PyPI version](https://img.shields.io/pypi/v/wizard-prompt-cli.svg)](https://pypi.org/project/wizard-prompt-cli/)
-[![Python Versions](https://img.shields.io/pypi/pyversions/wizard-prompt-cli.svg)](https://pypi.org/project/wizard-prompt-cli/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Wizard Prompt CLI is a magical command-line interface that conjures Claude AI to analyze, enhance, and transform your project files. Ask questions about your code in natural language, and watch as the AI wizard works its spells to provide insights and implement changes.
