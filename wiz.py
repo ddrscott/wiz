@@ -23,6 +23,7 @@ ignore_ext = (
     '.mov', '.mp3', '.wav', '.flac', '.ogg', '.webm', '.mkv', '.flv', '.m4a', '.wma', '.aac', '.opus', '.bmp',
     '.tiff', '.tif', '.psd', '.ai', '.eps', '.indd', '.raw', '.cr2', '.nef', '.orf', '.sr2', '.svgz', '.ico',
     '.ps', '.eps', '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.odt', '.ods', '.odp',
+    '.egg-info', '.whl', '.pyc',
 )
 ## common files to ignore
 ignore_files = ('.gitignore', '.dockerignore')
@@ -130,8 +131,7 @@ def reply(question, files=None):
                     size_str = f"{file_size / 1024:.1f} KB" if file_size > 1024 else f"{file_size} bytes"
                     table.add_row(file, size_str, "✓ Read")
             except Exception as e:
-                table.add_row(file, "N/A", f"❌ Error: {str(e)}")
-                console.print(f"[bold red]Error reading {file}:[/bold red] {str(e)}")
+                table.add_row(file, "N/A", str(e))
 
             progress.update(task, advance=1)
 

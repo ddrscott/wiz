@@ -5,15 +5,15 @@ A command-line interface for interacting with Claude AI to analyze and modify pr
 ## Installation
 
 ```bash
-uv pip install ai-cli
+pip install wizard-prompt-cli
 ```
 
 Or install from source:
 
 ```bash
-git clone https://github.com/ddrscott/ai-cli.git
-cd ai-cli
-uv pip install -e .
+git clone https://github.com/ddrscott/wizard-prompt-cli.git
+cd wizard-prompt-cli
+pip install -e .
 ```
 
 ## Usage
@@ -25,13 +25,13 @@ AI CLI offers two main commands:
 Send a question to Claude along with project files:
 
 ```bash
-claude prompt "How can I improve this code?"
+wiz prompt "How can I improve this code?"
 ```
 
 Include specific files:
 
 ```bash
-claude prompt -f main.py -f utils.py "How can I make these files more efficient?"
+wiz prompt -f main.py -f utils.py "How can I make these files more efficient?"
 ```
 
 The response will be saved to `.response.md` by default.
@@ -41,19 +41,19 @@ The response will be saved to `.response.md` by default.
 Apply changes suggested by Claude to update your files:
 
 ```bash
-claude apply
+wiz apply
 ```
 
 Or specify a different input file:
 
 ```bash
-claude apply custom_response.md
+wiz apply custom_response.md
 ```
 
 You can also pipe content directly to the apply command:
 
 ```bash
-cat response.md | claude apply -
+cat response.md | wiz apply -
 ```
 
 ## Features
@@ -77,25 +77,25 @@ cat response.md | claude apply -
 Ask Claude to refactor a specific function:
 
 ```bash
-claude prompt -f src/utils.py "Refactor the parse_data function to be more efficient"
+wiz prompt -f src/utils.py "Refactor the parse_data function to be more efficient"
 ```
 
 Implement a new feature:
 
 ```bash
-claude prompt "Add a progress bar to the file processing function"
+wiz prompt "Add a progress bar to the file processing function"
 ```
 
 Then apply the changes:
 
 ```bash
-claude apply
+wiz apply
 ```
 
 Or pipe the response directly:
 
 ```bash
-claude prompt "Fix bugs" | claude apply -
+wiz prompt "Fix bugs" | wiz apply -
 ```
 
 ## License
