@@ -167,6 +167,7 @@ def reply(question, files=None):
 
     console.print("[bold blue]Waiting for Claude...[/bold blue]")
 
+    stdout = Console(file=sys.stdout)
     # Stream response through a Live display
     with client.messages.stream(
         model="claude-3-7-sonnet-20250219",
@@ -189,7 +190,7 @@ def reply(question, files=None):
                     console.print(f"[dim]{escape(event.delta.thinking)}[/dim]", end="")
                 elif event.delta.type == "text_delta":
                     parts.append(event.delta.text)
-                    console.print(escape(event.delta.text), end="")
+                    stdout.print(escape(event.delta.text), end="")
             elif event.type == "content_block_stop":
                 console.print()
 

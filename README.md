@@ -8,6 +8,17 @@
 
 Wizard Prompt CLI is a magical command-line interface that conjures Claude AI to analyze, enhance, and transform your project files. Ask questions about your code in natural language, and watch as the AI wizard works its spells to provide insights and implement changes.
 
+## ⚠️ Important: API Key Required
+
+This tool requires an **Anthropic API key** to function. You must set the `ANTHROPIC_API_KEY` environment variable before using any commands. See the [API Key Setup](#-api-key-setup) section below for details.
+
+**Without this environment variable set, no commands will work!**
+
+```bash
+# Set this before using any wiz commands
+export ANTHROPIC_API_KEY=your_api_key_here
+```
+
 ## ✨ Magical Features
 
 - 🔮 Automatically scans your project's grimoire of files, carefully avoiding binary artifacts
@@ -33,6 +44,29 @@ git clone https://github.com/ddrscott/wizard-prompt-cli.git
 cd wizard-prompt-cli
 pip install -e .
 ```
+
+## 🔑 API Key Setup
+
+Before casting spells, you need to obtain your magical key:
+
+1. Create an account at [Anthropic](https://console.anthropic.com/) if you don't have one
+2. Generate an API key from your Anthropic dashboard
+3. Set the environment variable with your secret key:
+
+```bash
+# For Linux/macOS
+export ANTHROPIC_API_KEY=your_api_key_here
+
+# For Windows (Command Prompt)
+set ANTHROPIC_API_KEY=your_api_key_here
+
+# For Windows (PowerShell)
+$env:ANTHROPIC_API_KEY="your_api_key_here"
+```
+
+For permanent enchantment, add this to your shell profile (.bashrc, .zshrc, etc.).
+
+> 🔴 **Note**: The `ANTHROPIC_API_KEY` environment variable is **required**. The tool will not function without it properly set. If you encounter errors about unauthorized access or missing API keys, please verify this variable is correctly set.
 
 ## 🪄 Usage
 
@@ -105,10 +139,77 @@ Then cast the spell to apply the changes:
 wiz apply
 ```
 
-Or channel the response directly:
+Or do it all in one and see the output at the same time:
 
 ```bash
-wiz prompt "Fix bugs" | wiz apply -
+wiz prompt "Fix bugs" | tee -a /dev/tty | wiz apply -
+```
+
+## 🔄 Git Integration Best Practices
+
+When using Wizard Prompt CLI to modify your code, it's essential to integrate with Git or your preferred version control system to keep track of changes and maintain safety.
+
+### Before Casting Spells
+
+1. Commit your current changes to create a restore point:
+   ```bash
+   git add .
+   git commit -m "Save state before wizard modifications"
+   ```
+
+2. Alternatively, create a new branch for experimental wizard changes:
+   ```bash
+   git checkout -b wizard-experiment
+   ```
+
+### After Applying Changes
+
+1. Review all modifications with Git before committing:
+   ```bash
+   git diff
+   ```
+
+2. For a more detailed review, use a visual diff tool:
+   ```bash
+   git difftool
+   ```
+
+3. For a file-by-file review:
+   ```bash
+   git add -p
+   ```
+
+4. If you're satisfied with the changes:
+   ```bash
+   git add .
+   git commit -m "Applied AI-suggested improvements to X"
+   ```
+
+5. If the wizard's spells went awry, revert the changes:
+   ```bash
+   git reset --hard HEAD~1  # If you committed before using wiz
+   # or
+   git checkout -- .        # If you haven't committed the wizard's changes
+   ```
+
+Always review changes carefully before committing them to your repository. The AI is powerful but not infallible - your expertise is the final arbiter of which magical transformations to keep!
+
+## 🔧 Troubleshooting
+
+If you encounter errors like "API key not found" or "Unauthorized", check that:
+
+1. You have set the `ANTHROPIC_API_KEY` environment variable correctly
+2. The API key is valid and active in your Anthropic account
+3. You've correctly formatted the environment variable without extra spaces
+
+You can verify your environment variable is set correctly with:
+
+```bash
+# Linux/macOS
+echo $ANTHROPIC_API_KEY
+
+# Windows PowerShell
+echo $env:ANTHROPIC_API_KEY
 ```
 
 ## 📜 License
