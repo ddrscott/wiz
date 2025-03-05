@@ -23,7 +23,7 @@ ignore_ext = (
     '.mov', '.mp3', '.wav', '.flac', '.ogg', '.webm', '.mkv', '.flv', '.m4a', '.wma', '.aac', '.opus', '.bmp',
     '.tiff', '.tif', '.psd', '.ai', '.eps', '.indd', '.raw', '.cr2', '.nef', '.orf', '.sr2', '.svgz', '.ico',
     '.ps', '.eps', '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.odt', '.ods', '.odp',
-    '.egg-info', '.whl', '.pyc',
+    '.egg-info', '.whl', '.pyc', 'package-lock.json', 'yarn.lock',
 )
 ## common files to ignore
 ignore_files = ('.gitignore', '.dockerignore')
