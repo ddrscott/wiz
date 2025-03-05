@@ -93,7 +93,32 @@ def project_files():
     console.print(f"[green]Found {len(filtered_files)} relevant files[/green]")
     return filtered_files
 
-def reply(question, files=None):
+def parse_attachment(attachment):
+    if attachment.startswith("http"):
+        return {
+            "type": "image",
+            "source": {
+                "type": "url",
+                "url": attachment,
+            },
+        },
+    else:
+        import base64
+        import mimetypes
+        image_media_type = mimetypes.guess_type(attachment)
+        with open(attachment, 'rb') as f:
+            buffer = f.read()
+            image_data = base64.standard_b64encode(buffer).decode("utf-8")
+            return {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": image_media_type[0],
+                    "data": image_data,
+                },
+            }
+
+def reply(question, files=None, attachments=None):
 
     if files:
         console.print(f"Using specified files: {', '.join(files)}")
@@ -144,11 +169,15 @@ def reply(question, files=None):
 **Reminder**
 - wrap resulting code between `[{TAG}]` and `[/{TAG}]` tags!!!
 """
-
+    attachments = attachments or []
+    images = [
+        parse_attachment(att)
+        for att in attachments
+    ]
     messages = [
         {
             "role": "user",
-            "content": [
+            "content": images + [
                 {
                     "type": "text",
                     "text": body
@@ -171,7 +200,7 @@ def reply(question, files=None):
     # Stream response through a Live display
     with client.messages.stream(
         model="claude-3-7-sonnet-20250219",
-        max_tokens=20000,
+        max_tokens=60000,
         temperature=1,
         system=system,
         messages=messages, # type: ignore
@@ -260,13 +289,14 @@ def cli():
 @cli.command()
 @click.argument('question_text', nargs=-1, required=True)
 @click.option('--file', '-f', help='Files to include in the question', multiple=True)
+@click.option('--image', '-i', help='Image to include in the question', multiple=True)
 @click.option('--output', '-o', help='location write response without thoughts', default='.response.md')
-def prompt(question_text, file, output):
+def prompt(question_text, file, output, image):
     question = ' '.join(question_text)
 
     if question:
         try:
-            response = reply(question, files=file)
+            response = reply(question, files=file, attachments=image)
             with open(output, 'w') as f:
                 f.write(response)
             console.print(f"[bold green]Output written to {escape(output)}[/bold green]")
