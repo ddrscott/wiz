@@ -118,7 +118,8 @@ def parse_attachment(attachment):
                 },
             }
 
-def reply(question, files=None, attachments=None):
+def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tokens=16000):
+    attachments = attachments or []  # Ensure attachments is a list
 
     if files:
         console.print(f"Using specified files: {', '.join(files)}")
@@ -131,6 +132,7 @@ def reply(question, files=None, attachments=None):
     table.add_column("File", style="cyan")
     table.add_column("Size", justify="right", style="green")
     table.add_column("Status", style="yellow")
+    table.add_column("Type", style="magenta")  # Add type column to differentiate files and attachments
 
     body = [f"Help me with following files: {', '.join(file_list)}"]
 
@@ -154,11 +156,24 @@ def reply(question, files=None, attachments=None):
 
                     # Add to table
                     size_str = f"{file_size / 1024:.1f} KB" if file_size > 1024 else f"{file_size} bytes"
-                    table.add_row(file, size_str, "✓ Read")
+                    table.add_row(file, size_str, "✓ Read", "Text File")
             except Exception as e:
-                table.add_row(file, "N/A", str(e))
+                table.add_row(file, "N/A", str(e), "Error")
 
             progress.update(task, advance=1)
+
+    # Add attachments to the table
+    for attachment in attachments:
+        try:
+            if attachment.startswith("http"):
+                table.add_row(attachment, "URL", "✓ Included", "Remote Image")
+            else:
+                file_size = os.path.getsize(attachment)
+                size_str = f"{file_size / 1024:.1f} KB" if file_size > 1024 else f"{file_size} bytes"
+                ext = os.path.splitext(attachment)[1][1:].upper() or "Unknown"
+                table.add_row(attachment, size_str, "✓ Included", f"Image ({ext})")
+        except Exception as e:
+            table.add_row(attachment, "N/A", f"Error: {str(e)}", "Image Error")
 
     # Show summary table
     console.print(table)
@@ -169,7 +184,6 @@ def reply(question, files=None, attachments=None):
 **Reminder**
 - wrap resulting code between `[{TAG}]` and `[/{TAG}]` tags!!!
 """
-    attachments = attachments or []
     images = [
         parse_attachment(att)
         for att in attachments
@@ -185,7 +199,7 @@ def reply(question, files=None, attachments=None):
             ]
         }
     ]
-    open('.messages.md', 'w').write(system + "\n---\n" + body)
+    open('.messages.md', 'w').write(system + "\n---\\n" + body)
 
     console.print("[bold yellow]Question:[/bold yellow]")
     console.print(question)
@@ -200,13 +214,13 @@ def reply(question, files=None, attachments=None):
     # Stream response through a Live display
     with client.messages.stream(
         model="claude-3-7-sonnet-20250219",
-        max_tokens=60000,
+        max_tokens=max_tokens,
         temperature=1,
         system=system,
         messages=messages, # type: ignore
         thinking={
             "type": "enabled",
-            "budget_tokens": 16000
+            "budget_tokens": thinking_tokens,
         }
     ) as stream:
         for event in stream:
@@ -291,12 +305,14 @@ def cli():
 @click.option('--file', '-f', help='Files to include in the question', multiple=True)
 @click.option('--image', '-i', help='Image to include in the question', multiple=True)
 @click.option('--output', '-o', help='location write response without thoughts', default='.response.md')
-def prompt(question_text, file, output, image):
+@click.option('--max-tokens', '-m', help='Max tokens for the response', default=60000)
+@click.option('--thinking-tokens', '-t', help='Max tokens for the thinking', default=16000)
+def prompt(question_text, file, output, image, max_tokens, thinking_tokens):
     question = ' '.join(question_text)
 
     if question:
         try:
-            response = reply(question, files=file, attachments=image)
+            response = reply(question, files=file, attachments=image, max_tokens=max_tokens)
             with open(output, 'w') as f:
                 f.write(response)
             console.print(f"[bold green]Output written to {escape(output)}[/bold green]")

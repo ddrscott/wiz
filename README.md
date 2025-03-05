@@ -27,6 +27,7 @@ export ANTHROPIC_API_KEY=your_api_key_here
 - 🧪 Powerful file filtering to focus the AI's attention on specific scrolls of code
 - 📚 Handles file output with proper directory creation spells
 - 📥 Supports reading enchantments from stdin
+- 🖼️ Includes image attachment capabilities for visual context
 
 ## 🧙 Installation
 
@@ -85,9 +86,18 @@ Include specific scrolls:
 wiz prompt -f main.py -f utils.py "How can I make these files more efficient?"
 ```
 
+Add images for visual context:
+
+```bash
+wiz prompt -i screenshot.png "What UI improvements would you suggest based on this screenshot?"
+```
+
 Options:
 - `-f, --file`: Specify files to include (can be used multiple times)
+- `-i, --image`: Include image files as context (can be used multiple times)
 - `-o, --output`: Location to write response (default: `.response.md`)
+- `-m, --max-tokens`: Maximum tokens for the response (default: 60000)
+- `-t, --thinking-tokens`: Maximum tokens for Claude's thinking process (default: 16000)
 
 The wizard's response will be saved to `.response.md` by default, and a copy of the full messages including system prompt will be saved to `.messages.md`.
 
@@ -130,6 +140,18 @@ Conjure a new feature:
 
 ```bash
 wiz prompt "Add a progress bar to the file processing function"
+```
+
+Get feedback on UI design with an image:
+
+```bash
+wiz prompt -i design.png -f styles.css "How can I improve this layout?"
+```
+
+Adjust token limits for complex analysis:
+
+```bash
+wiz prompt -m 80000 -t 20000 "Perform a comprehensive security audit of this codebase"
 ```
 
 Then cast the spell to apply the changes:
