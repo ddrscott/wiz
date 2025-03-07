@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 from glob import glob
 import fnmatch
 from typing import List, Tuple
@@ -54,7 +55,7 @@ console.log("good bye world")
 """
 
 
-def project_files():
+def project_files(exclude_pattern=None):
     # Fetch all files with status indicator
     with console.status("[bold green]Scanning project files...", spinner="dots"):
         all_files = glob('**/*.*', recursive=True)
@@ -66,6 +67,9 @@ def project_files():
             return True
         # ignore hidden files and node_modules
         if file.startswith('.') or 'node_modules' in file:
+            return True
+        # Check exclude pattern if provided
+        if exclude_pattern and re.search(exclude_pattern, file):
             return True
         for ignore_file in ignore_files:
             if os.path.exists(ignore_file):
@@ -118,14 +122,18 @@ def parse_attachment(attachment):
                 },
             }
 
-def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tokens=16000):
+def get_file_table(files=None, attachments=None, exclude_pattern=None):
+    """
+    Generate and return a table of files and attachments that would be included in a prompt.
+    Also returns the list of files being processed.
+    """
     attachments = attachments or []  # Ensure attachments is a list
 
     if files:
         console.print(f"Using specified files: {', '.join(files)}")
         file_list = files
     else:
-        file_list = project_files()
+        file_list = project_files(exclude_pattern)
 
     # Display file stats in a table
     table = Table(title="Files Being Processed")
@@ -133,8 +141,6 @@ def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tok
     table.add_column("Size", justify="right", style="green")
     table.add_column("Status", style="yellow")
     table.add_column("Type", style="magenta")  # Add type column to differentiate files and attachments
-
-    body = [f"Help me with following files: {', '.join(file_list)}"]
 
     # Read files with progress indication
     with Progress(
@@ -148,12 +154,7 @@ def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tok
         for file in file_list:
             try:
                 with open(file, 'r') as f:
-                    content = f.read()
                     file_size = os.path.getsize(file)
-                    body.append(f"""[{TAG} {file}]""")
-                    body.append(content)
-                    body.append(f"""[/{TAG}]""")
-
                     # Add to table
                     size_str = f"{file_size / 1024:.1f} KB" if file_size > 1024 else f"{file_size} bytes"
                     table.add_row(file, size_str, "✓ Read", "Text File")
@@ -175,8 +176,28 @@ def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tok
         except Exception as e:
             table.add_row(attachment, "N/A", f"Error: {str(e)}", "Image Error")
 
+    return table, file_list
+
+def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tokens=16000, exclude_pattern=None):
+    attachments = attachments or []  # Ensure attachments is a list
+
+    table, file_list = get_file_table(files, attachments, exclude_pattern)
+
     # Show summary table
     console.print(table)
+
+    body = [f"Help me with following files: {', '.join(file_list)}"]
+
+    # Read files content for the prompt
+    for file in file_list:
+        try:
+            with open(file, 'r') as f:
+                content = f.read()
+                body.append(f"""[{TAG} {file}]""")
+                body.append(content)
+                body.append(f"""[/{TAG}]""")
+        except Exception as e:
+            console.print(f"[bold red]Error reading {file}: {str(e)}[/bold red]")
 
     body = '\n'.join(body)
     body = f"""{body}\n---\n\n{question}
@@ -307,12 +328,14 @@ def cli():
 @click.option('--output', '-o', help='location write response without thoughts', default='.response.md')
 @click.option('--max-tokens', '-m', help='Max tokens for the response', default=60000)
 @click.option('--thinking-tokens', '-t', help='Max tokens for the thinking', default=16000)
-def prompt(question_text, file, output, image, max_tokens, thinking_tokens):
+@click.option('--exclude', '-x', help='Regular expression pattern to exclude files', default=None)
+def prompt(question_text, file, output, image, max_tokens, thinking_tokens, exclude):
     question = ' '.join(question_text)
 
     if question:
         try:
-            response = reply(question, files=file, attachments=image, max_tokens=max_tokens)
+            response = reply(question, files=file, attachments=image, max_tokens=max_tokens,
+                           thinking_tokens=thinking_tokens, exclude_pattern=exclude)
             with open(output, 'w') as f:
                 f.write(response)
             console.print(f"[bold green]Output written to {escape(output)}[/bold green]")
@@ -323,6 +346,40 @@ def prompt(question_text, file, output, image, max_tokens, thinking_tokens):
         console.print("[bold red]Please provide a question as an argument[/bold red]")
         console.print("[bold]Example:[/bold] ./script.py 'How can I improve this code?'")
         console.print("[bold]Example with files:[/bold] ./script.py -f file1.py -f file2.py 'How do these files interact?'")
+        console.print("[bold]Example with exclusion:[/bold] ./script.py --exclude '.*test.*\\.py$' 'Analyze all non-test Python files'")
+
+@cli.command()
+@click.option('--file', '-f', help='Files to include in the listing', multiple=True)
+@click.option('--image', '-i', help='Image to include in the listing', multiple=True)
+@click.option('--exclude', '-x', help='Regular expression pattern to exclude files', default=None)
+def files(file, image, exclude):
+    """
+    List files that would be included in a prompt without calling the LLM.
+
+    This command shows you exactly what files would be processed if you ran a prompt
+    with the same parameters, helping you to verify the files before spending API tokens.
+    """
+    table, file_list = get_file_table(files=file, attachments=image, exclude_pattern=exclude)
+
+    # Show summary statistics
+    console.print(f"[bold green]Total Files: {len(file_list)}[/bold green]")
+
+    # Show summary table
+    console.print(table)
+
+    # Show command example
+    if file or exclude or image:
+        example_cmd = "wiz prompt "
+        if file:
+            example_cmd += " ".join([f"-f '{f}'" for f in file]) + " "
+        if image:
+            example_cmd += " ".join([f"-i '{i}'" for i in image]) + " "
+        if exclude:
+            example_cmd += f"-x '{exclude}' "
+        example_cmd += '"Your question here"'
+
+        console.print(f"\n[bold blue]Example command using these files:[/bold blue]")
+        console.print(f"[dim]{escape(example_cmd)}[/dim]")
 
 
 @cli.command()

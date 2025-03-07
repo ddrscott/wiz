@@ -28,6 +28,8 @@ export ANTHROPIC_API_KEY=your_api_key_here
 - 📚 Handles file output with proper directory creation spells
 - 📥 Supports reading enchantments from stdin
 - 🖼️ Includes image attachment capabilities for visual context
+- 🚫 Exclude files via regex patterns to fine-tune your magical selection
+- 📋 Preview files that would be included before spending API tokens
 
 ## 🧙 Installation
 
@@ -70,7 +72,7 @@ For permanent enchantment, add this to your shell profile (.bashrc, .zshrc, etc.
 
 ## 🪄 Usage
 
-Wizard Prompt CLI offers two main incantations:
+Wizard Prompt CLI offers three main incantations:
 
 ### 📝 Prompt Command
 
@@ -92,14 +94,46 @@ Add images for visual context:
 wiz prompt -i screenshot.png "What UI improvements would you suggest based on this screenshot?"
 ```
 
+Exclude files matching a pattern:
+
+```bash
+wiz prompt -x ".*test.*\.py$" "Analyze all non-test Python files"
+```
+
 Options:
 - `-f, --file`: Specify files to include (can be used multiple times)
 - `-i, --image`: Include image files as context (can be used multiple times)
 - `-o, --output`: Location to write response (default: `.response.md`)
 - `-m, --max-tokens`: Maximum tokens for the response (default: 60000)
 - `-t, --thinking-tokens`: Maximum tokens for Claude's thinking process (default: 16000)
+- `-x, --exclude`: Regular expression pattern to exclude files
 
 The wizard's response will be saved to `.response.md` by default, and a copy of the full messages including system prompt will be saved to `.messages.md`.
+
+### 📋 Files Command
+
+Preview which files would be included in a prompt without calling the API:
+
+```bash
+wiz files
+```
+
+This command accepts the same filtering options as `prompt`:
+
+```bash
+wiz files -f main.py -f utils.py
+```
+
+```bash
+wiz files -x ".*test.*\.py$"
+```
+
+Options:
+- `-f, --file`: Specify files to include (can be used multiple times)
+- `-i, --image`: Include image files as context (can be used multiple times)
+- `-x, --exclude`: Regular expression pattern to exclude files
+
+Use this command to verify file selection before spending API tokens with a real prompt.
 
 ### ✨ Apply Command
 
@@ -146,6 +180,24 @@ Get feedback on UI design with an image:
 
 ```bash
 wiz prompt -i design.png -f styles.css "How can I improve this layout?"
+```
+
+Exclude test files when analyzing your codebase:
+
+```bash
+wiz prompt -x ".*test.*\.py$|__pycache__" "Review my Python code architecture"
+```
+
+Preview files that would be included in a complex filter:
+
+```bash
+wiz files -x "\.(json|md|txt)$"
+```
+
+Focus on specific file types by excluding others:
+
+```bash
+wiz prompt -x "\.(json|md|txt)$" "Analyze only my code files, not documentation or data"
 ```
 
 Adjust token limits for complex analysis:
