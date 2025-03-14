@@ -56,32 +56,119 @@ console.log("good bye world")
 
 
 def project_files(exclude_pattern=None):
-    # Fetch all files with status indicator
-    with console.status("[bold green]Scanning project files...", spinner="dots"):
-        all_files = glob('**/*.*', recursive=True)
+    # Cache gitignore patterns for performance
+    gitignore_patterns = []
+    gitignore_negation_patterns = []
 
-    # Function to check if a file should be ignored
+    # Process .gitignore files once at the beginning
+    for ignore_file in ignore_files:
+        if os.path.exists(ignore_file):
+            with open(ignore_file, 'r') as f:
+                # Read and filter out empty lines and comments
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        if line.startswith('!'):
+                            gitignore_negation_patterns.append(line[1:])  # Store without the '!'
+                        else:
+                            gitignore_patterns.append(line)
+
+    # Compile exclude regex patterns for performance
+    exclude_regex_patterns = []
+    if exclude_pattern:
+        patterns = [exclude_pattern] if isinstance(exclude_pattern, str) else exclude_pattern
+        for pattern in patterns:
+            if pattern:
+                try:
+                    exclude_regex_patterns.append(re.compile(pattern))
+                except re.error:
+                    console.print(f"[bold yellow]Warning: Invalid regex pattern: {pattern}[/bold yellow]")
+
+    # Fast path: get all files including those without extensions
+    with console.status("[bold green]Scanning project files...", spinner="dots"):
+        # Get all files, including those without extensions
+        all_files = []
+        for pattern in ['**/*.*', '**/[!.]*']:
+            all_files.extend(glob(pattern, recursive=True))
+        # Remove duplicates while preserving order
+        all_files = list(dict.fromkeys(all_files))
+
+    # Function to check if a file should be ignored - optimized version
     def should_ignore(file):
-        # ignore image files
+        # Quick check for common binary files and patterns
         if file.endswith(ignore_ext):
             return True
-        # ignore hidden files and node_modules
+
+        # Handle hidden files, node_modules, and other common patterns
         if file.startswith('.') or 'node_modules' in file:
             return True
-        # Check exclude pattern if provided
-        if exclude_pattern and re.search(exclude_pattern, file):
+
+        if os.path.isdir(file):
             return True
-        for ignore_file in ignore_files:
-            if os.path.exists(ignore_file):
-                with open(ignore_file, 'r') as f:
-                    ignore_patterns = f.read().splitlines()
-                    for pattern in ignore_patterns:
-                        if fnmatch.fnmatch(file, pattern):
-                            return True
+        # Skip directories that are commonly ignored
+        parts = file.split(os.sep)
+        if any(part in ('node_modules', '__pycache__', '.git', '.idea', '.vscode') for part in parts):
+            return True
+
+        # Check custom exclude patterns
+        for pattern in exclude_regex_patterns:
+            if pattern.search(file):
+                return True
+
+        # Process gitignore patterns
+        # First check if file is excluded by a gitignore pattern
+        for pattern in gitignore_patterns:
+            if _matches_gitignore_pattern(file, pattern):
+                # Check if there's a negation pattern that overrides
+                for neg_pattern in gitignore_negation_patterns:
+                    if _matches_gitignore_pattern(file, neg_pattern):
+                        return False  # Negation pattern takes precedence
+                return True  # No negation pattern matched, so ignore this file
+
         return False
 
-    # Filter files with progress display
+    # Helper function to match gitignore patterns properly
+    def _matches_gitignore_pattern(file, pattern):
+        # Special case for directory patterns like "dist/"
+        if pattern.endswith('/'):
+            pattern_name = pattern.rstrip('/')
+
+            # Simplest case: direct match for directory
+            if file == pattern_name or file.startswith(f"{pattern_name}/"):
+                return True
+
+            # Check if file is in a directory specified by pattern
+            parts = file.split(os.sep)
+            for i, part in enumerate(parts):
+                if fnmatch.fnmatch(part, pattern_name):
+                    # If this directory component matches, and it's not the last part (i.e., it's a directory)
+                    if i < len(parts) - 1:
+                        return True
+            return False
+
+        # Handle pattern with leading slash (anchored to project root)
+        if pattern.startswith('/'):
+            pattern = pattern[1:]
+            return fnmatch.fnmatch(file, pattern)
+
+        # Standard gitignore pattern matching
+
+        # Check if pattern contains wildcards
+        if '*' in pattern or '?' in pattern or '[' in pattern:
+            # Check basename match
+            basename = os.path.basename(file)
+            if fnmatch.fnmatch(basename, pattern):
+                return True
+
+            # Check full path match
+            return fnmatch.fnmatch(file, pattern) or fnmatch.fnmatch(file, f"*/{pattern}")
+        else:
+            # For patterns without wildcards, direct substring search is faster
+            return pattern in file or f"/{pattern}" in file
+
+    # Filter files with progress display and optimized batch processing
     filtered_files = []
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[bold blue]Filtering files..."),
@@ -328,7 +415,7 @@ def cli():
 @click.option('--output', '-o', help='location write response without thoughts', default='.response.md')
 @click.option('--max-tokens', '-m', help='Max tokens for the response', default=60000)
 @click.option('--thinking-tokens', '-t', help='Max tokens for the thinking', default=16000)
-@click.option('--exclude', '-x', help='Regular expression pattern to exclude files', default=None)
+@click.option('--exclude', '-x', help='Regular expression pattern to exclude files', multiple=True, default=None)
 def prompt(question_text, file, output, image, max_tokens, thinking_tokens, exclude):
     question = ' '.join(question_text)
 
@@ -346,12 +433,12 @@ def prompt(question_text, file, output, image, max_tokens, thinking_tokens, excl
         console.print("[bold red]Please provide a question as an argument[/bold red]")
         console.print("[bold]Example:[/bold] ./script.py 'How can I improve this code?'")
         console.print("[bold]Example with files:[/bold] ./script.py -f file1.py -f file2.py 'How do these files interact?'")
-        console.print("[bold]Example with exclusion:[/bold] ./script.py --exclude '.*test.*\\.py$' 'Analyze all non-test Python files'")
+        console.print("[bold]Example with exclusion:[/bold] ./script.py -x '.*test.*\\.py$' -x '.*\\.log$' 'Analyze all non-test Python files'")
 
 @cli.command()
 @click.option('--file', '-f', help='Files to include in the listing', multiple=True)
 @click.option('--image', '-i', help='Image to include in the listing', multiple=True)
-@click.option('--exclude', '-x', help='Regular expression pattern to exclude files', default=None)
+@click.option('--exclude', '-x', help='Regular expression pattern to exclude files', multiple=True, default=None)
 def files(file, image, exclude):
     """
     List files that would be included in a prompt without calling the LLM.

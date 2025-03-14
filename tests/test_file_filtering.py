@@ -39,27 +39,43 @@ def test_project_files_with_exclude(mock_glob):
         assert 'utils.py' in result
         assert 'test_file.py' not in result
 
+def test_project_files_with_multiple_exclude(mock_glob):
+    """Test file filtering with multiple exclude patterns."""
+    with patch('os.path.exists', return_value=False):  # No .gitignore
+        # Test with a tuple of patterns
+        result = project_files(exclude_pattern=('test_.*\\.py$', '.*utils.*'))
+        assert 'main.py' in result
+        assert 'utils.py' not in result
+        assert 'test_file.py' not in result
+
 def test_gitignore_patterns():
     """Test respecting .gitignore patterns."""
-    mock_gitignore_content = "ignored_pattern*\n*.log"
+    mock_gitignore_content = "ignored_pattern*\n*.log\n# This is a comment\n\n/root_only.txt"
 
-    with patch('wiz.glob', return_value=['file.py', 'ignored_pattern.txt', 'debug.log']):
+    with patch('wiz.glob', return_value=['file.py', 'ignored_pattern.txt', 'debug.log', 'root_only.txt', 'subdir/root_only.txt']):
         with patch('os.path.exists', return_value=True):
             with patch('builtins.open', mock_open(read_data=mock_gitignore_content)):
-                with patch('fnmatch.fnmatch') as mock_fnmatch:
-                    # Set up mock behavior
-                    def match_side_effect(filename, pattern):
-                        if pattern == "ignored_pattern*" and filename.startswith("ignored_pattern"):
-                            return True
-                        if pattern == "*.log" and filename.endswith(".log"):
-                            return True
-                        return False
+                with patch('os.path.isdir', return_value=False):  # All files are files, not directories
+                    with patch('fnmatch.fnmatch') as mock_fnmatch:
+                        # Set up mock behavior
+                        def match_side_effect(filename, pattern):
+                            if pattern == "ignored_pattern*" and "ignored_pattern" in filename:
+                                return True
+                            if pattern == "*.log" and filename.endswith(".log"):
+                                return True
+                            if pattern == "root_only.txt" and filename == "root_only.txt":
+                                return True
+                            if pattern == "*root_only.txt*" and "root_only.txt" in filename:
+                                return True
+                            return False
 
-                    mock_fnmatch.side_effect = match_side_effect
+                        mock_fnmatch.side_effect = match_side_effect
 
-                    result = project_files()
+                        result = project_files()
 
-                    # Only file.py should be included
-                    assert 'file.py' in result
-                    assert 'ignored_pattern.txt' not in result
-                    assert 'debug.log' not in result
+                        # Only file.py and subdir/root_only.txt should be included
+                        assert 'file.py' in result
+                        assert 'ignored_pattern.txt' not in result
+                        assert 'debug.log' not in result
+                        assert 'root_only.txt' not in result
+                        assert 'subdir/root_only.txt' in result
