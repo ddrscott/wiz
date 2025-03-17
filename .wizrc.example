@@ -1,0 +1,6 @@
+# Example .wizrc configuration
+files: &files
+  exclude: ["*.md", "*.log"]
+  
+prompt:
+  <<: *files

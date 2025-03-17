@@ -30,6 +30,7 @@ export ANTHROPIC_API_KEY=your_api_key_here
 - 🖼️ Includes image attachment capabilities for visual context
 - 🚫 Exclude files via regex patterns to fine-tune your magical selection
 - 📋 Preview files that would be included before spending API tokens
+- 📝 Supports `.wizrc` configuration file for persistent command-line arguments
 
 ## 🧙 Installation
 
@@ -70,9 +71,38 @@ For permanent enchantment, add this to your shell profile (.bashrc, .zshrc, etc.
 
 > 🔴 **Note**: The `ANTHROPIC_API_KEY` environment variable is **required**. The tool will not function without it properly set. If you encounter errors about unauthorized access or missing API keys, please verify this variable is correctly set.
 
+## 📝 Configuration with .wizrc
+
+You can store command configurations in a `.wizrc` YAML file in your project directory:
+
+```yaml
+# Example .wizrc file
+files:
+  exclude: ["*test*"]
+  image: ["screenshot.png"]
+  max_tokens: 80000
+
+# Example .wizrc configuration
+files: &files
+  exclude: ["*.log", "build", "dist"]
+  
+prompt:
+  <<: *files
+```
+
+The tool will automatically load this configuration and apply it to corresponding commands. The example above shows:
+- Setting exclusion patterns to ignore specific files 
+- Using YAML anchors (`&files`) to define common configurations
+- Inheriting settings between commands with YAML merge keys (`<<: *files`)
+- Configuring command-specific options like max_tokens
+
+Each top-level key in the YAML corresponds to a subcommand, with nested options matching the command's options. All configuration is completely optional, and command-line arguments will override settings in `.wizrc` when provided.
+
+The `.wizrc` file is automatically excluded from git via `.gitignore`.
+
 ## 🪄 Usage
 
-Wizard Prompt CLI offers three main incantations:
+Wizard Prompt CLI offers three main incantations and supports configuration via a `.wizrc` file:
 
 ### 📝 Prompt Command
 

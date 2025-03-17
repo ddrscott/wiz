@@ -3,10 +3,11 @@ import sys
 import re
 from glob import glob
 import fnmatch
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any, Optional
 
 import click
 import anthropic
+import yaml
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
@@ -404,9 +405,33 @@ def process_file_blocks(lines: List[str]) -> List[Tuple[str, str, int]]:
             i += 1
 
     return result
+
+def load_wizrc_config() -> Dict[str, Any]:
+    """Load configuration from .wizrc YAML file if it exists in the current directory."""
+    wizrc_path = os.path.join(os.getcwd(), '.wizrc')
+    config: Dict[str, Any] = {}
+    if os.path.exists(wizrc_path):
+        try:
+            with open(wizrc_path, 'r') as f:
+                yaml_config = yaml.safe_load(f)
+                if yaml_config and isinstance(yaml_config, dict):
+                    console.print(f"[dim]Using configuration from .wizrc file[/dim]")
+                    print(f"!!!!!!!!!!!!  {yaml_config=}")
+                    return yaml_config
+                else:
+                    console.print(f"[bold yellow]Warning: .wizrc file is empty or not properly formatted[/bold yellow]")
+        except Exception as e:
+            console.print(f"[bold yellow]Warning: Error reading .wizrc file: {str(e)}[/bold yellow]")
+    return config
+
 @click.group()
-def cli():
-    pass
+@click.pass_context
+def cli(ctx):
+    """Command-line interface with .wizrc support."""
+    config = load_wizrc_config()
+    if config:
+        # Set the default map for all commands
+        ctx.default_map = config
 
 @cli.command()
 @click.argument('question_text', nargs=-1, required=True)
