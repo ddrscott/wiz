@@ -416,7 +416,6 @@ def load_wizrc_config() -> Dict[str, Any]:
                 yaml_config = yaml.safe_load(f)
                 if yaml_config and isinstance(yaml_config, dict):
                     console.print(f"[dim]Using configuration from .wizrc file[/dim]")
-                    print(f"!!!!!!!!!!!!  {yaml_config=}")
                     return yaml_config
                 else:
                     console.print(f"[bold yellow]Warning: .wizrc file is empty or not properly formatted[/bold yellow]")
