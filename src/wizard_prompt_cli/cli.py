@@ -7,12 +7,13 @@ from typing import List, Tuple, Dict, Any, Optional
 
 import click
 import yaml
+import tiktoken
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 from rich.markup import escape
 
-from inference import reply, process_file_blocks
+from .inference import reply, process_file_blocks
 
 # Create console for error/status output - all UI/logs go to stderr
 console = Console(stderr=True)
@@ -159,13 +160,23 @@ def project_files(exclude_pattern=None):
     console.print(f"[green]Found {len(filtered_files)} relevant files[/green]")
     return filtered_files
 
-def get_file_table(files=None, attachments=None, exclude_pattern=None):
+def get_file_table(files=None, attachments=None, exclude_pattern=None, show_tokens=False):
     """
     Generate and return a table of files and attachments that would be included in a prompt.
     Also returns the list of files being processed.
+
+    Args:
+        files: List of specific files to include
+        attachments: List of attachments to include
+        exclude_pattern: Pattern to exclude files
+        show_tokens: Whether to show token counts along with file sizes
     """
     attachments = attachments or []  # Ensure attachments is a list
     total_bytes = 0  # Initialize total byte counter
+    total_tokens = 0  # Initialize total token counter
+
+    # Initialize tiktoken encoder for claude-3 models
+    encoder = tiktoken.get_encoding("cl100k_base")  # Using OpenAI's cl100k encoding
 
     if files:
         console.print(f"Using specified files: {', '.join(files)}")
@@ -177,6 +188,8 @@ def get_file_table(files=None, attachments=None, exclude_pattern=None):
     table = Table(title="Files Being Processed")
     table.add_column("File", style="cyan")
     table.add_column("Size", justify="right", style="green")
+    if show_tokens:
+        table.add_column("Tokens", justify="right", style="blue")
     table.add_column("Status", style="yellow")
     table.add_column("Type", style="magenta")  # Add type column to differentiate files and attachments
 
@@ -192,13 +205,29 @@ def get_file_table(files=None, attachments=None, exclude_pattern=None):
         for file in file_list:
             try:
                 with open(file, 'r') as f:
+                    content = f.read()
                     file_size = os.path.getsize(file)
                     total_bytes += file_size  # Add to total
+
+                    # Calculate tokens using tiktoken
+                    if show_tokens:
+                        tokens = len(encoder.encode(content))
+                        total_tokens += tokens
+                    else:
+                        tokens = 0
+
                     # Add to table
                     size_str = f"{file_size / 1024:.1f} KB" if file_size > 1024 else f"{file_size} bytes"
-                    table.add_row(file, size_str, "✓ Read", "Text File")
+
+                    if show_tokens:
+                        table.add_row(file, size_str, str(tokens), "✓ Read", "Text File")
+                    else:
+                        table.add_row(file, size_str, "✓ Read", "Text File")
             except Exception as e:
-                table.add_row(file, "N/A", str(e), "Error")
+                if show_tokens:
+                    table.add_row(file, "N/A", "N/A", str(e), "Error")
+                else:
+                    table.add_row(file, "N/A", str(e), "Error")
 
             progress.update(task, advance=1)
 
@@ -206,15 +235,44 @@ def get_file_table(files=None, attachments=None, exclude_pattern=None):
     for attachment in attachments:
         try:
             if attachment.startswith("http"):
-                table.add_row(attachment, "URL", "✓ Included", "Remote Image")
+                if show_tokens:
+                    # Using a conservative estimate for remote images
+                    img_token_estimate = 1200
+                    total_tokens += img_token_estimate
+                    table.add_row(attachment, "URL", f"~{img_token_estimate}", "✓ Included", "Remote Image")
+                else:
+                    table.add_row(attachment, "URL", "✓ Included", "Remote Image")
             else:
                 file_size = os.path.getsize(attachment)
                 total_bytes += file_size  # Add to total
+
+                # Estimate for image tokens based on file size
+                # This is a rough approximation and varies by image content and model
+                if show_tokens:
+                    # Roughly estimate tokens based on image size
+                    if file_size < 50000:  # Small image
+                        img_token_estimate = 700
+                    elif file_size < 200000:  # Medium image
+                        img_token_estimate = 1400
+                    elif file_size < 500000:  # Large image
+                        img_token_estimate = 2100
+                    else:  # Very large image
+                        img_token_estimate = 3000
+
+                    total_tokens += img_token_estimate
+
                 size_str = f"{file_size / 1024:.1f} KB" if file_size > 1024 else f"{file_size} bytes"
                 ext = os.path.splitext(attachment)[1][1:].upper() or "Unknown"
-                table.add_row(attachment, size_str, "✓ Included", f"Image ({ext})")
+
+                if show_tokens:
+                    table.add_row(attachment, size_str, f"~{img_token_estimate}", "✓ Included", f"Image ({ext})")
+                else:
+                    table.add_row(attachment, size_str, "✓ Included", f"Image ({ext})")
         except Exception as e:
-            table.add_row(attachment, "N/A", f"Error: {str(e)}", "Image Error")
+            if show_tokens:
+                table.add_row(attachment, "N/A", "N/A", f"Error: {str(e)}", "Image Error")
+            else:
+                table.add_row(attachment, "N/A", f"Error: {str(e)}", "Image Error")
 
     # Add a row for the total
     if total_bytes > 0:
@@ -228,13 +286,12 @@ def get_file_table(files=None, attachments=None, exclude_pattern=None):
 
         # Add a separator and then the total row
         table.add_section()
-        table.add_row("[bold]TOTAL[/bold]", f"[bold]{total_size_str}[/bold]", "", "")
+        if show_tokens:
+            table.add_row("[bold]TOTAL[/bold]", f"[bold]{total_size_str}[/bold]", f"[bold]{total_tokens}[/bold]", "", "")
+        else:
+            table.add_row("[bold]TOTAL[/bold]", f"[bold]{total_size_str}[/bold]", "", "")
 
     return table, file_list
-
-# The reply function is now imported from inference.py
-
-# The process_file_blocks function is now imported from inference.py
 
 def load_wizrc_config() -> Dict[str, Any]:
     """Load configuration from .wizrc YAML file if it exists in the current directory."""
@@ -270,14 +327,15 @@ def cli(ctx):
 @click.option('--max-tokens', '-m', help='Max tokens for the response', default=60000)
 @click.option('--thinking-tokens', '-t', help='Max tokens for the thinking', default=16000)
 @click.option('--exclude', '-x', help='Regular expression pattern to exclude files', multiple=True, default=None)
-def prompt(question_text, file, output, image, max_tokens, thinking_tokens, exclude):
+@click.option('--tokens', is_flag=True, help='Show token count estimates alongside file sizes')
+def prompt(question_text, file, output, image, max_tokens, thinking_tokens, exclude, tokens):
     question = ' '.join(question_text)
 
     if question:
         try:
             response = reply(question, files=file, attachments=image, max_tokens=max_tokens,
                            thinking_tokens=thinking_tokens, exclude_pattern=exclude,
-                           file_table_func=get_file_table)
+                           file_table_func=get_file_table, show_tokens=tokens)
             with open(output, 'w') as f:
                 f.write(response)
             console.print(f"[bold green]Output written to {escape(output)}[/bold green]")
@@ -294,14 +352,15 @@ def prompt(question_text, file, output, image, max_tokens, thinking_tokens, excl
 @click.option('--file', '-f', help='Files to include in the listing', multiple=True)
 @click.option('--image', '-i', help='Image to include in the listing', multiple=True)
 @click.option('--exclude', '-x', help='Regular expression pattern to exclude files', multiple=True, default=None)
-def files(file, image, exclude):
+@click.option('--tokens', is_flag=True, help='Show token count estimates alongside file sizes')
+def files(file, image, exclude, tokens):
     """
     List files that would be included in a prompt without calling the LLM.
 
     This command shows you exactly what files would be processed if you ran a prompt
     with the same parameters, helping you to verify the files before spending API tokens.
     """
-    table, file_list = get_file_table(files=file, attachments=image, exclude_pattern=exclude)
+    table, file_list = get_file_table(files=file, attachments=image, exclude_pattern=exclude, show_tokens=tokens)
 
     # Show summary statistics
     console.print(f"[bold green]Total Files: {len(file_list)}[/bold green]")
@@ -318,6 +377,8 @@ def files(file, image, exclude):
             example_cmd += " ".join([f"-i '{i}'" for i in image]) + " "
         if exclude:
             example_cmd += f"-x '{exclude}' "
+        if tokens:
+            example_cmd += "--tokens "
         example_cmd += '"Your question here"'
 
         console.print(f"\n[bold blue]Example command using these files:[/bold blue]")
@@ -362,7 +423,6 @@ def apply(input):
 
     if not file_blocks:
         console.print("[yellow]No file blocks found in input[/yellow]")
-
 
 if __name__ == '__main__':
     cli()

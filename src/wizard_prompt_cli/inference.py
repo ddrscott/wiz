@@ -63,7 +63,7 @@ def parse_attachment(attachment):
                 },
             }
 
-def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tokens=16000, exclude_pattern=None, file_table_func=None):
+def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tokens=16000, exclude_pattern=None, file_table_func=None, show_tokens=False):
     """
     Send a prompt to Claude with files and attachments and return the response.
 
@@ -75,6 +75,7 @@ def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tok
         thinking_tokens: Maximum number of tokens for thinking
         exclude_pattern: Pattern to exclude files
         file_table_func: Function to generate file table and list (required)
+        show_tokens: Whether to show token counts in the file table
 
     Returns:
         The text response from Claude
@@ -82,7 +83,7 @@ def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tok
     attachments = attachments or []  # Ensure attachments is a list
 
     # Get file table and list using the provided function
-    table, file_list = file_table_func(files, attachments, exclude_pattern)
+    table, file_list = file_table_func(files, attachments, exclude_pattern, show_tokens)
 
     # Show summary table
     console.print(table)
