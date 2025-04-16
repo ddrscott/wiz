@@ -6,17 +6,16 @@ import fnmatch
 from typing import List, Tuple, Dict, Any, Optional
 
 import click
-import anthropic
 import yaml
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 from rich.markup import escape
 
+from inference import reply, process_file_blocks
+
 # Create console for error/status output - all UI/logs go to stderr
 console = Console(stderr=True)
-
-client = anthropic.Anthropic()
 
 ## common binary files and almost always files to ignore
 ignore_ext = (
@@ -29,31 +28,6 @@ ignore_ext = (
 )
 ## common files to ignore
 ignore_files = ('.gitignore', '.dockerignore')
-TAG = 'FILE'
-system = f"""You are a 100x developer helping with a project.
-
-**Strict Rules**
-- all file output must be complete.
-- wrap output with `[{TAG} path]...[/{TAG}]` tags and triple-tick fences.
-- The output will be piped into another program to automatically adjust all files. Strict coherence to the format is paramount!
-
-**Example Output**
-[{TAG} path/to/foo.py]
-```python
-puts "hello world"
-```
-[/{TAG}]
-
-[{TAG} path/to/bar.py]
-```javascript
-console.log("good bye world")
-```
-[/{TAG}]
-
-**Notes**
-- It is okay to explain things, but keep it brief and to the point!
-- YOU MUST ALWAYS WRAP code files between [{TAG}] and [/{TAG}] tags!!!
-"""
 
 
 def project_files(exclude_pattern=None):
@@ -185,37 +159,13 @@ def project_files(exclude_pattern=None):
     console.print(f"[green]Found {len(filtered_files)} relevant files[/green]")
     return filtered_files
 
-def parse_attachment(attachment):
-    if attachment.startswith("http"):
-        return {
-            "type": "image",
-            "source": {
-                "type": "url",
-                "url": attachment,
-            },
-        },
-    else:
-        import base64
-        import mimetypes
-        image_media_type = mimetypes.guess_type(attachment)
-        with open(attachment, 'rb') as f:
-            buffer = f.read()
-            image_data = base64.standard_b64encode(buffer).decode("utf-8")
-            return {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": image_media_type[0],
-                    "data": image_data,
-                },
-            }
-
 def get_file_table(files=None, attachments=None, exclude_pattern=None):
     """
     Generate and return a table of files and attachments that would be included in a prompt.
     Also returns the list of files being processed.
     """
     attachments = attachments or []  # Ensure attachments is a list
+    total_bytes = 0  # Initialize total byte counter
 
     if files:
         console.print(f"Using specified files: {', '.join(files)}")
@@ -243,6 +193,7 @@ def get_file_table(files=None, attachments=None, exclude_pattern=None):
             try:
                 with open(file, 'r') as f:
                     file_size = os.path.getsize(file)
+                    total_bytes += file_size  # Add to total
                     # Add to table
                     size_str = f"{file_size / 1024:.1f} KB" if file_size > 1024 else f"{file_size} bytes"
                     table.add_row(file, size_str, "✓ Read", "Text File")
@@ -258,153 +209,32 @@ def get_file_table(files=None, attachments=None, exclude_pattern=None):
                 table.add_row(attachment, "URL", "✓ Included", "Remote Image")
             else:
                 file_size = os.path.getsize(attachment)
+                total_bytes += file_size  # Add to total
                 size_str = f"{file_size / 1024:.1f} KB" if file_size > 1024 else f"{file_size} bytes"
                 ext = os.path.splitext(attachment)[1][1:].upper() or "Unknown"
                 table.add_row(attachment, size_str, "✓ Included", f"Image ({ext})")
         except Exception as e:
             table.add_row(attachment, "N/A", f"Error: {str(e)}", "Image Error")
 
+    # Add a row for the total
+    if total_bytes > 0:
+        # Format total size appropriately depending on size
+        if total_bytes > 1024 * 1024:  # If more than 1MB
+            total_size_str = f"{total_bytes / (1024 * 1024):.2f} MB"
+        elif total_bytes > 1024:  # If more than 1KB
+            total_size_str = f"{total_bytes / 1024:.2f} KB"
+        else:
+            total_size_str = f"{total_bytes} bytes"
+
+        # Add a separator and then the total row
+        table.add_section()
+        table.add_row("[bold]TOTAL[/bold]", f"[bold]{total_size_str}[/bold]", "", "")
+
     return table, file_list
 
-def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tokens=16000, exclude_pattern=None):
-    attachments = attachments or []  # Ensure attachments is a list
+# The reply function is now imported from inference.py
 
-    table, file_list = get_file_table(files, attachments, exclude_pattern)
-
-    # Show summary table
-    console.print(table)
-
-    body = [f"Help me with following files: {', '.join(file_list)}"]
-
-    # Read files content for the prompt
-    for file in file_list:
-        try:
-            with open(file, 'r') as f:
-                content = f.read()
-                body.append(f"""[{TAG} {file}]""")
-                body.append(content)
-                body.append(f"""[/{TAG}]""")
-        except Exception as e:
-            console.print(f"[bold red]Error reading {file}: {str(e)}[/bold red]")
-
-    body = '\n'.join(body)
-    body = f"""{body}\n---\n\n{question}
-
-**Reminder**
-- wrap resulting code between `[{TAG}]` and `[/{TAG}]` tags!!!
-"""
-    images = [
-        parse_attachment(att)
-        for att in attachments
-    ]
-    messages = [
-        {
-            "role": "user",
-            "content": images + [
-                {
-                    "type": "text",
-                    "text": body
-                }
-            ]
-        }
-    ]
-    open('.messages.md', 'w').write(system + "\n---\\n" + body)
-
-    console.print("[bold yellow]Question:[/bold yellow]")
-    console.print(question)
-    console.print()
-
-    parts = []
-    thinking_output = ""
-
-    console.print("[bold blue]Waiting for Claude...[/bold blue]")
-
-    stdout = Console(file=sys.stdout)
-    # Stream response through a Live display
-    with client.messages.stream(
-        model="claude-3-7-sonnet-20250219",
-        max_tokens=max_tokens,
-        temperature=1,
-        system=system,
-        messages=messages, # type: ignore
-        thinking={
-            "type": "enabled",
-            "budget_tokens": thinking_tokens,
-        }
-    ) as stream:
-        for event in stream:
-            if event.type == "content_block_start":
-                console.print()
-            elif event.type == "content_block_delta":
-                if event.delta.type == "thinking_delta":
-                    thinking_output += event.delta.thinking
-                    # Display thinking in a side panel or as a subtitle
-                    console.print(f"[dim]{escape(event.delta.thinking)}[/dim]", end="")
-                elif event.delta.type == "text_delta":
-                    parts.append(event.delta.text)
-                    stdout.print(escape(event.delta.text), end="")
-            elif event.type == "content_block_stop":
-                console.print()
-
-    return ''.join(parts)
-
-def process_file_blocks(lines: List[str]) -> List[Tuple[str, str, int]]:
-    f"""
-    Process input text containing file blocks in the format:
-    [{TAG} path/to/file]
-    (optional) ```language
-    content
-    (optional) ```
-    [/{TAG}]
-
-    Returns a list of tuples: (file_path, content, line_number)
-    """
-    result = []
-    i = 0
-
-    while i < len(lines):
-        line = lines[i].rstrip()
-
-        # Look for file block start
-        if line.startswith('[FILE ') and line.endswith(']'):
-            line_number = i + 1
-            file_path = line[6:-1].strip()
-            i += 1
-
-            # Check if there's an opening code fence (optional)
-            if i < len(lines) and lines[i].strip().startswith('```'):
-                i += 1  # Skip the fence line
-
-            # Collect content lines
-            content_lines = []
-
-            while i < len(lines):
-                current_line = lines[i].strip()
-                if current_line == f'[/{TAG}]':
-                    break
-                elif (current_line == '```' and
-                      i + 1 < len(lines) and
-                      lines[i + 1].strip() == f'[/{TAG}]'):
-                    i += 1  # Skip the fence line
-                    break
-
-                content_lines.append(lines[i].rstrip())
-                i += 1
-
-            if i >= len(lines):
-                print(f"Warning: Missing [/{TAG}] marker for file block at line {line_number}", file=sys.stderr)
-                break
-
-            # Skip [/FILE]
-            i += 1
-
-            content = '\n'.join(content_lines)
-            result.append((file_path, content, line_number))
-
-        else:
-            i += 1
-
-    return result
+# The process_file_blocks function is now imported from inference.py
 
 def load_wizrc_config() -> Dict[str, Any]:
     """Load configuration from .wizrc YAML file if it exists in the current directory."""
@@ -446,7 +276,8 @@ def prompt(question_text, file, output, image, max_tokens, thinking_tokens, excl
     if question:
         try:
             response = reply(question, files=file, attachments=image, max_tokens=max_tokens,
-                           thinking_tokens=thinking_tokens, exclude_pattern=exclude)
+                           thinking_tokens=thinking_tokens, exclude_pattern=exclude,
+                           file_table_func=get_file_table)
             with open(output, 'w') as f:
                 f.write(response)
             console.print(f"[bold green]Output written to {escape(output)}[/bold green]")
