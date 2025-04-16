@@ -328,14 +328,17 @@ def cli(ctx):
 @click.option('--thinking-tokens', '-t', help='Max tokens for the thinking', default=16000)
 @click.option('--exclude', '-x', help='Regular expression pattern to exclude files', multiple=True, default=None)
 @click.option('--tokens', is_flag=True, help='Show token count estimates alongside file sizes')
-def prompt(question_text, file, output, image, max_tokens, thinking_tokens, exclude, tokens):
+@click.option('--model', help='Model to use for the prompt', default="anthropic/claude-3-7-sonnet-20250219")
+@click.option('--llm-base', help='Base URL for the LLM API (for custom/self-hosted deployments)')
+def prompt(question_text, file, output, image, max_tokens, thinking_tokens, exclude, tokens, model, llm_base):
     question = ' '.join(question_text)
 
     if question:
         try:
             response = reply(question, files=file, attachments=image, max_tokens=max_tokens,
                            thinking_tokens=thinking_tokens, exclude_pattern=exclude,
-                           file_table_func=get_file_table, show_tokens=tokens)
+                           file_table_func=get_file_table, show_tokens=tokens, model=model,
+                           api_base=llm_base)
             with open(output, 'w') as f:
                 f.write(response)
             console.print(f"[bold green]Output written to {escape(output)}[/bold green]")

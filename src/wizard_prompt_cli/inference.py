@@ -1,17 +1,24 @@
 import sys
 import base64
 import mimetypes
+import os
 from typing import List
 
-import anthropic
+import litellm
 from rich.console import Console
 from rich.markup import escape
 
 # Create console for error/status output - all UI/logs go to stderr
 console = Console(stderr=True)
 
-# Initialize Anthropic client
-client = anthropic.Anthropic()
+# Check if API key is available
+api_key = os.environ.get("ANTHROPIC_API_KEY")
+if not api_key:
+    console.print("[bold red]Error: ANTHROPIC_API_KEY environment variable is not set[/bold red]")
+    console.print("Please set your Anthropic API key by running: export ANTHROPIC_API_KEY=your_key_here")
+
+# Configure LiteLLM
+litellm.drop_params = True  # Drop provider-specific parameters for better compatibility
 
 # Constants
 TAG = 'FILE'
@@ -41,34 +48,38 @@ console.log("good bye world")
 """
 
 def parse_attachment(attachment):
+    """
+    Parse attachments in a way that's compatible with LiteLLM's format for Anthropic models.
+    LiteLLM will handle the conversion to the proper format for each provider.
+    """
     if attachment.startswith("http"):
+        # For URL images
         return {
-            "type": "image",
-            "source": {
-                "type": "url",
-                "url": attachment,
-            },
-        },
+            "type": "image_url",
+            "image_url": {
+                "url": attachment
+            }
+        }
     else:
+        # For local images - convert to base64
         image_media_type = mimetypes.guess_type(attachment)
         with open(attachment, 'rb') as f:
             buffer = f.read()
             image_data = base64.standard_b64encode(buffer).decode("utf-8")
             return {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": image_media_type[0],
-                    "data": image_data,
-                },
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{image_media_type[0]};base64,{image_data}"
+                }
             }
 
-def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tokens=16000, exclude_pattern=None, file_table_func=None, show_tokens=False):
+def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tokens=16000, exclude_pattern=None,
+          file_table_func=None, show_tokens=False, model="anthropic/claude-3-7-sonnet-20250219", api_base=None):
     """
-    Send a prompt to Claude with files and attachments and return the response.
+    Send a prompt to LLM with files and attachments and return the response.
 
     Args:
-        question: The prompt to send to Claude
+        question: The prompt to send to LLM
         files: List of file paths to include
         attachments: List of image paths or URLs to include
         max_tokens: Maximum number of tokens in the response
@@ -76,9 +87,11 @@ def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tok
         exclude_pattern: Pattern to exclude files
         file_table_func: Function to generate file table and list (required)
         show_tokens: Whether to show token counts in the file table
+        model: LiteLLM model identifier (e.g., "anthropic/claude-3-7-sonnet-20250219", "openai/gpt-4o")
+        api_base: Custom API base URL for the LLM provider (for self-hosted models)
 
     Returns:
-        The text response from Claude
+        The text response from LLM
     """
     attachments = attachments or []  # Ensure attachments is a list
 
@@ -107,21 +120,20 @@ def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tok
 **Reminder**
 - wrap resulting code between `[{TAG}]` and `[/{TAG}]` tags!!!
 """
-    images = [
-        parse_attachment(att)
-        for att in attachments
-    ]
-    messages = [
-        {
-            "role": "user",
-            "content": images + [
-                {
-                    "type": "text",
-                    "text": body
-                }
-            ]
-        }
-    ]
+
+    # Build the messages array
+    content = []
+
+    # Add image attachments
+    for att in attachments:
+        content.append(parse_attachment(att))
+
+    # Add text content
+    content.append({
+        "type": "text",
+        "text": body
+    })
+
     open('.messages.md', 'w').write(system + "\n---\\n" + body)
 
     console.print("[bold yellow]Question:[/bold yellow]")
@@ -129,37 +141,53 @@ def reply(question, files=None, attachments=None, max_tokens=60000, thinking_tok
     console.print()
 
     parts = []
-    thinking_output = ""
 
-    console.print("[bold blue]Waiting for Claude...[/bold blue]")
+    console.print(f"[bold blue]Waiting for LLM {escape(model)}...[/bold blue]")
 
     stdout = Console(file=sys.stdout)
-    # Stream response through a Live display
-    with client.messages.stream(
-        model="claude-3-7-sonnet-20250219",
-        max_tokens=max_tokens,
-        temperature=1,
-        system=system,
-        messages=messages, # type: ignore
-        thinking={
-            "type": "enabled",
-            "budget_tokens": thinking_tokens,
-        }
-    ) as stream:
-        for event in stream:
-            if event.type == "content_block_start":
-                console.print()
-            elif event.type == "content_block_delta":
-                if event.delta.type == "thinking_delta":
-                    thinking_output += event.delta.thinking
-                    # Display thinking in a side panel or as a subtitle
-                    console.print(f"[dim]{escape(event.delta.thinking)}[/dim]", end="")
-                elif event.delta.type == "text_delta":
-                    parts.append(event.delta.text)
-                    stdout.print(escape(event.delta.text), end="")
-            elif event.type == "content_block_stop":
-                console.print()
 
+    try:
+        # Create messages array for LiteLLM format
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": content}
+        ]
+
+        # Call LiteLLM completion with streaming
+        stream = litellm.completion(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=1,
+            stream=True,
+            reasoning_effort="low",
+            drop_params=True,
+            thinking={"type": "enabled", "budget_tokens": thinking_tokens},
+            api_base=api_base
+        )
+
+        for chunk in stream:
+            if chunk.choices and len(chunk.choices) > 0:
+                delta = chunk.choices[0].delta
+
+                # Handle regular content
+                if delta.content is not None:
+                    parts.append(delta.content)
+                    stdout.print(escape(delta.content), end="")
+
+                # Handle thinking output
+                if hasattr(delta, 'thinking') and delta.thinking:
+                    console.print(f"[dim]{escape(delta.thinking)}[/dim]", end="")
+                elif hasattr(delta, 'thinking_blocks') and delta.thinking_blocks:
+                    for tb in delta.thinking_blocks:
+                        if thinking := tb.get('thinking', None):
+                            console.print(f"[dim]{escape(thinking)}[/dim]", end="")
+                elif hasattr(delta, 'reasoning_content') and delta.reasoning_content:
+                    console.print(f"[dim]{escape(delta.reasoning_content)}[/dim]", end="")
+    except Exception as e:
+        console.print(f"[bold red]Error during API call: {str(e)}[/bold red]")
+
+    console.print()
     return ''.join(parts)
 
 def process_file_blocks(lines: List[str]) -> List[tuple]:

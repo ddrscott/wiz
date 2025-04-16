@@ -18,6 +18,17 @@ This tool requires an **Anthropic API key** to function. You must set the `ANTHR
 export ANTHROPIC_API_KEY=your_api_key_here
 ```
 
+> **Note**: This tool uses [LiteLLM](https://docs.litellm.ai/docs/providers/) for compatibility with multiple AI providers. The default model is Anthropic's Claude, but you can switch to other providers using the `--model` flag.
+
+### Example Self-Hosted OpenAI-compatible
+
+```bash
+OPENAI_API_KEY=${WEBUI_API_KEY} wiz prompt -f README.md \
+  'write a poem about the readme' \
+  --llm-base https://webui.dataturd.com/api \
+  --model openai/qwen2.5:14b
+```
+
 ## ✨ Magical Features
 
 - 🔮 Automatically scans your project's grimoire of files, carefully avoiding binary artifacts
@@ -135,8 +146,11 @@ Options:
 - `-i, --image`: Include image files as context (can be used multiple times)
 - `-o, --output`: Location to write response (default: `.response.md`)
 - `-m, --max-tokens`: Maximum tokens for the response (default: 60000)
-- `-t, --thinking-tokens`: Maximum tokens for Claude's thinking process (default: 16000)
+- `-t, --thinking-tokens`: Maximum tokens for model's thinking process (default: 16000)
 - `-x, --exclude`: Regular expression pattern to exclude files
+- `--tokens`: Show token count estimates alongside file sizes
+- `--model`: Specify LLM model and provider using LiteLLM format (default: anthropic/claude-3-7-sonnet-20250219)
+- `--llm-base`: Custom API base URL for the LLM provider (for self-hosted models)
 
 The wizard's response will be saved to `.response.md` by default, and a copy of the full messages including system prompt will be saved to `.messages.md`.
 
@@ -162,6 +176,7 @@ Options:
 - `-f, --file`: Specify files to include (can be used multiple times)
 - `-i, --image`: Include image files as context (can be used multiple times)
 - `-x, --exclude`: Regular expression pattern to exclude files
+- `--tokens`: Show token count estimates alongside file sizes
 
 Use this command to verify file selection before spending API tokens with a real prompt.
 
@@ -224,6 +239,12 @@ Preview files that would be included in a complex filter:
 wiz files -x "\.(json|md|txt)$"
 ```
 
+View files with token count estimates:
+
+```bash
+wiz files --tokens
+```
+
 Focus on specific file types by excluding others:
 
 ```bash
@@ -234,6 +255,27 @@ Adjust token limits for complex analysis:
 
 ```bash
 wiz prompt -m 80000 -t 20000 "Perform a comprehensive security audit of this codebase"
+```
+
+See token usage when sending a prompt:
+
+```bash
+wiz prompt --tokens "How can I optimize these files?"
+```
+
+Use alternative AI providers via LiteLLM (requires setting appropriate API keys):
+
+```bash
+# Use Groq's Qwen model
+export GROQ_API_KEY=your_groq_key_here
+wiz prompt --model groq/qwen-qwq-32b "What pattern is this code using?"
+
+# Use OpenAI's GPT-4o
+export OPENAI_API_KEY=your_openai_key_here
+wiz prompt --model openai/gpt-4o --max-tokens 10000 "How can I improve this algorithm?"
+
+# Use a self-hosted model or custom deployment
+wiz prompt --model openai/gpt-4o --llm-base "http://localhost:8000/v1" "Explain this code to me"
 ```
 
 Then cast the spell to apply the changes:
@@ -314,6 +356,19 @@ echo $ANTHROPIC_API_KEY
 # Windows PowerShell
 echo $env:ANTHROPIC_API_KEY
 ```
+
+For issues related to token counting or display:
+
+1. Make sure you have the latest version of the tool installed
+2. The `--tokens` flag shows estimates based on the tiktoken library
+3. Image token counts are approximate since they depend on image dimensions and content
+
+If you see LiteLLM errors:
+
+1. Verify you have the `litellm` package installed (min version 1.63.0)
+2. This tool uses LiteLLM to connect to AI providers like Anthropic
+3. Make sure both `litellm` and `tiktoken` packages are correctly installed
+4. Check that you're using a compatible version of Python (3.11+)
 
 ## 📜 License
 
